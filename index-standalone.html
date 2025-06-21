@@ -1,0 +1,255 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Penilaian Fuzzy Tsukamoto</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f2f2f2;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 600px;
+      margin: 50px auto;
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    h2 {
+      text-align: center;
+      color: #6A1B9A;
+    }
+    label {
+      display: block;
+      margin-top: 15px;
+      font-weight: bold;
+      color: #388E3C;
+    }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    button {
+      padding: 10px 15px;
+      margin: 15px 5px 0 0;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button:nth-child(1) { background-color: #6A1B9A; color: white; }
+    button:nth-child(2) { background-color: #388E3C; color: white; }
+    .hasil {
+      margin-top: 20px;
+      background: #fdfdfd;
+      padding: 15px;
+      border-radius: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: center;
+    }
+    th {
+      background: #E1BEE7;
+      color: #4A148C;
+    }
+    #spearman {
+      margin-bottom: 10px;
+      font-weight: bold;
+      color: #4A148C;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Input Data Penilaian</h2>
+    <label>Nama Peserta:</label>
+    <input type="text" id="nama">
+    <label>Nilai Tulis 0-100:</label>
+    <input type="number" id="tulis">
+    <label>Nilai Keterampilan 0-100:</label>
+    <input type="number" id="keterampilan">
+    <label>Nilai Wawancara 40-100:</label>
+    <input type="number" id="wawancara">
+    <label>Nilai Kesehatan 40-80:</label>
+    <input type="number" id="kesehatan">
+    <div>
+      <button onclick="submitData()">Kirim Data</button>
+      <button onclick="resetData()">Reset Data</button>
+    </div>
+    <div class="hasil">
+      <div id="spearman"></div>
+      <div id="hasil-container"></div>
+    </div>
+  </div>
+  <script>
+    let dataPeserta = [];
+
+    function fuzzyLinear(x, x1, x2, naik) {
+      if (naik) {
+        if (x <= x1) return 0.0;
+        if (x >= x2) return 1.0;
+        return (x - x1) / (x2 - x1);
+      } else {
+        if (x <= x1) return 1.0;
+        if (x >= x2) return 0.0;
+        return (x2 - x) / (x2 - x1);
+      }
+    }
+
+    function fuzzifyInputs(tulis, keterampilan, wawancara, kesehatan) {
+      return {
+        tulis: {
+          lulus: fuzzyLinear(tulis, 25, 75, true),
+          tidak_lulus: fuzzyLinear(tulis, 25, 75, false)
+        },
+        keterampilan: {
+          lulus: fuzzyLinear(keterampilan, 25, 75, true),
+          tidak_lulus: fuzzyLinear(keterampilan, 25, 75, false)
+        },
+        wawancara: {
+          lulus: fuzzyLinear(wawancara, 55, 75, true),
+          tidak_lulus: fuzzyLinear(wawancara, 55, 75, false)
+        },
+        kesehatan: {
+          lulus: fuzzyLinear(kesehatan, 50, 70, true),
+          tidak_lulus: fuzzyLinear(kesehatan, 50, 70, false)
+        }
+      };
+    }
+
+    function hitungZ(predikat, alpha) {
+      return predikat === "diterima" ? alpha * 50 + 25 : 75 - alpha * 50;
+    }
+
+    function fuzzyTsukamoto(tulis, keterampilan, wawancara, kesehatan) {
+      const fuzzyVals = fuzzifyInputs(tulis, keterampilan, wawancara, kesehatan);
+      const ruleOutputMap = {
+        "llll": "diterima",
+        "lllt": "tidak_diterima",
+        "tttt": "tidak_diterima"
+      };
+      let rules = [];
+      let ruleNo = 1;
+
+      for (let t of ["lulus", "tidak_lulus"]) {
+        for (let k of ["lulus", "tidak_lulus"]) {
+          for (let w of ["lulus", "tidak_lulus"]) {
+            for (let h of ["lulus", "tidak_lulus"]) {
+              const alpha = Math.min(
+                fuzzyVals.tulis[t],
+                fuzzyVals.keterampilan[k],
+                fuzzyVals.wawancara[w],
+                fuzzyVals.kesehatan[h]
+              );
+              const key = (t[0] + k[0] + w[0] + h[0]);
+              const predikat = ruleOutputMap[key] || "tidak_diterima";
+              const z = Math.ceil(hitungZ(predikat, alpha));
+              rules.push({ alpha, z, alpha_z: alpha * z });
+              ruleNo++;
+            }
+          }
+        }
+      }
+
+      const totalAlpha = rules.reduce((sum, r) => sum + r.alpha, 0);
+      const totalAlphaZ = rules.reduce((sum, r) => sum + r.alpha_z, 0);
+      const hasilAkhir = totalAlpha === 0 ? 0 : totalAlphaZ / totalAlpha;
+      const statusAkhir = hasilAkhir >= 70 ? "DITERIMA" : "TIDAK DITERIMA";
+      return { hasilAkhir, statusAkhir };
+    }
+
+    function hitungPakar(tulis, keterampilan, wawancara, kesehatan) {
+      return (wawancara + kesehatan + (tulis + keterampilan) / 2) / 3;
+    }
+
+    function averageRank(values) {
+      const sorted = [...values].map((val, idx) => [val, idx]).sort((a, b) => b[0] - a[0]);
+      const ranks = new Array(values.length);
+      let rank = 1;
+      for (let i = 0; i < sorted.length;) {
+        let j = i;
+        while (j < sorted.length && sorted[j][0] === sorted[i][0]) j++;
+        const avgRank = (2 * rank + (j - i - 1)) / 2;
+        for (let k = i; k < j; k++) ranks[sorted[k][1]] = avgRank;
+        rank += (j - i);
+        i = j;
+      }
+      return ranks;
+    }
+
+    function submitData() {
+      const nama = document.getElementById("nama").value || `Peserta-${dataPeserta.length + 1}`;
+      const tulis = parseFloat(document.getElementById("tulis").value);
+      const keterampilan = parseFloat(document.getElementById("keterampilan").value);
+      const wawancara = parseFloat(document.getElementById("wawancara").value);
+      const kesehatan = parseFloat(document.getElementById("kesehatan").value);
+      if ([tulis, keterampilan, wawancara, kesehatan].some(isNaN)) {
+        alert("Mohon isi semua nilai dengan benar.");
+        return;
+      }
+
+      dataPeserta.push({ nama, tulis, keterampilan, wawancara, kesehatan });
+      const hasil = dataPeserta.map(p => {
+        const fuzzy = fuzzyTsukamoto(p.tulis, p.keterampilan, p.wawancara, p.kesehatan);
+        const pakar = hitungPakar(p.tulis, p.keterampilan, p.wawancara, p.kesehatan);
+        return {
+          nama: p.nama,
+          pakar: Math.round(pakar),
+          sistem: Math.round(fuzzy.hasilAkhir),
+          status: fuzzy.statusAkhir
+        };
+      });
+
+      const rankPakar = averageRank(hasil.map(h => h.pakar));
+      const rankSistem = averageRank(hasil.map(h => h.sistem));
+      hasil.forEach((h, i) => {
+        h.rank_pakar = rankPakar[i];
+        h.rank_sistem = rankSistem[i];
+        h.di = h.rank_pakar - h.rank_sistem;
+        h.di2 = h.di * h.di;
+      });
+
+      const n = hasil.length;
+      const totalDi2 = hasil.reduce((sum, h) => sum + h.di2, 0);
+      const spearman = n > 1 ? 1 - (6 * totalDi2) / (n * (n * n - 1)) : 1;
+      document.getElementById("spearman").textContent = `Spearman Rho: ${spearman.toFixed(3)}`;
+      renderTable(hasil);
+    }
+
+    function resetData() {
+      dataPeserta = [];
+      document.getElementById("hasil-container").innerHTML = "";
+      document.getElementById("spearman").textContent = "";
+    }
+
+    function renderTable(data) {
+      let html = `<table><thead><tr>
+        <th>Nama</th><th>Pakar</th><th>Sistem</th><th>Status</th>
+        <th>Rank Pakar</th><th>Rank Sistem</th><th>d<sub>i</sub></th><th>d<sub>i</sub>²</th>
+      </tr></thead><tbody>`;
+      data.forEach(item => {
+        html += `<tr>
+          <td>${item.nama}</td><td>${item.pakar}</td><td>${item.sistem}</td><td>${item.status}</td>
+          <td>${item.rank_pakar}</td><td>${item.rank_sistem}</td><td>${item.di}</td><td>${item.di2}</td>
+        </tr>`;
+      });
+      html += "</tbody></table>";
+      document.getElementById("hasil-container").innerHTML = html;
+    }
+  </script>
+</body>
+</html>
